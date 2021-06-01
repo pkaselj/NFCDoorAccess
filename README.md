@@ -16,7 +16,7 @@ Documentation:
 
 Written as a part of my bachelor's thesis.
 
-# ------------------------------- LICENSE -----------------------------------------
+# --- LICENSE -----
 
 ```
 This program is free software: you can redistribute it and/or modify
@@ -38,9 +38,9 @@ This program is free software: you can redistribute it and/or modify
   
  ```
     
-# ---------------------------------------------------------------------------------
+# -----
 
-# ---------------------------- Other libraries used -------------------------------
-Qt C++ framework (<a href="https://www.qt.io/faq/tag/qt-open-source-licensing">LGPL</a>)
+# ---- Other libraries used -----
+Qt C++ framework (<a href="https://www.qt.io/faq/tag/qt-open-source-licensing">LGPL</a>) <br>
 libnfc (<a href="http://nfc-tools.org/index.php/Libnfc:License">LGPL</a>)
-# ---------------------------------------------------------------------------------
+# -----
