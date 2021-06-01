@@ -18,8 +18,8 @@ Documentation:
 
 Written as a part of my bachelor's thesis.
 
-------------------------------- LICENSE -----------------------------------------
-
+<p> ------------------------------- LICENSE ----------------------------------------- </p>
+<code>
 This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
@@ -36,10 +36,12 @@ This program is free software: you can redistribute it and/or modify
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  
+  </code>
     
----------------------------------------------------------------------------------
+<p> --------------------------------------------------------------------------------- </p>
 
----------------------------- Other libraries used -------------------------------
+<p> ---------------------------- Other libraries used ------------------------------- </p>
 Qt C++ framework (<a href="https://www.qt.io/faq/tag/qt-open-source-licensing">LGPL</a>)
 libnfc (<a href="http://nfc-tools.org/index.php/Libnfc:License">LGPL</a>)
 ---------------------------------------------------------------------------------
