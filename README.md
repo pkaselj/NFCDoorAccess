@@ -11,7 +11,7 @@ Contact info:
 
 Documentation: 
     - <a href="https://github.com/pkaselj/NFCDoorAccessCMakeDocumentation">Schematics</a>
-    - <a href="">Doxygen docs</a>
+    - <a href="nfcdooraccess-docs.netlify.app">Doxygen docs</a> (go to `Classes` menu)
 
 
 Written as a part of my bachelor's thesis.
