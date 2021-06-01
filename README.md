@@ -37,10 +37,9 @@ This program is free software: you can redistribute it and/or modify
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
   
  ```
-    
-# -----
+  
 
 # ---- Other libraries used -----
 Qt C++ framework (<a href="https://www.qt.io/faq/tag/qt-open-source-licensing">LGPL</a>) <br>
 libnfc (<a href="http://nfc-tools.org/index.php/Libnfc:License">LGPL</a>)
-# -----
+
