@@ -1,0 +1,1 @@
+sudo rm *.log; sudo nice -n -15 ./Startup

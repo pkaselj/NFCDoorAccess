@@ -1,0 +1,118 @@
+#include<iostream>
+#include<iomanip>
+#include<cstring>
+
+#include"Database.hpp"
+#include"Logger.hpp"
+#include"DataMailbox.hpp"
+#include"Time.hpp"
+
+void get_results(Database& db)
+{
+    int id, pass, sc, last_op;
+    std::string name, last_seen;
+
+    while(db.CurrentQuery()->next())
+    {
+        db.CurrentQuery()->get( id, COLUMN(0) );
+        db.CurrentQuery()->get( name, COLUMN(1) );
+        db.CurrentQuery()->get( pass, COLUMN(2) );
+        db.CurrentQuery()->get( sc, COLUMN(3) );
+        db.CurrentQuery()->get( last_seen, COLUMN(4) );
+        db.CurrentQuery()->get( last_op, COLUMN(5) );
+
+
+    std::cout << id << " "
+              << name << " "
+              << pass << " "
+              << sc << " "
+              << last_seen << " "
+              << last_op << std::endl;
+    }
+
+}
+
+bool checkPasswordFunction(Database& db, const std::string& password)
+{
+    statement checkPassword("SELECT NAME FROM Employees WHERE PASSWORD = ?");
+    db.NewQuery(checkPassword);
+
+    db.CurrentQuery()->bind( ARGUMENT(0), password );
+    bool success = db.CurrentQuery()->next();
+    return success;
+}
+
+
+bool updateLastSeenField(Database& db, const std::string& password, const std::string& timeString)
+{
+    statement updateTime("UPDATE Employees SET LAST_SEEN = ? WHERE PASSWORD = ? LIMIT 1");
+
+    db.NewQuery(updateTime);
+    db.CurrentQuery()->bind( ARGUMENT(0), timeString );
+    db.CurrentQuery()->bind( ARGUMENT(1), password );
+    bool success = db.CurrentQuery()->next();
+
+    if(success == false)
+    {
+        Kernel::Warning("Database could not update Last Seen field with value: \"" + timeString + "\" for password: \"" + password +"\"");
+    }
+        
+    return success;
+}
+
+int main()
+{
+    Logger logger("database.log");
+    // Database db(DATABASE_PATH, &logger);
+    // Logger state_logger("database_state.log");
+    //MailboxAut mailbox(DATABASE_GATEWAY_QUEUE, &logger, &state_logger);
+    // SimplifiedMailbox mailbox(DATABASE_GATEWAY_QUEUE, &logger);
+
+    DataMailbox mailbox(DATABASE_GATEWAY_QUEUE, &logger);
+    MailboxReference router(ROUTER_TO_DBG_QUEUE);
+
+    logger << "Entry point";
+
+    while(true)
+    {
+        logger << "Mark";
+
+        DataMailboxMessage* pMessage = mailbox.receive();
+        if (pMessage->getDataType() == MessageDataType::DatabaseMessage)
+        {
+            DatabaseMessage* pDataBaseMessage = dynamic_cast<DatabaseMessage*>(pMessage);
+
+            if (pDataBaseMessage->getAuthenticationType() == DatabaseMessage::enuAuthenticationType::KEYPAD)
+            {
+                if (pDataBaseMessage->getIdentifier() == "220100")
+                {
+                    pDataBaseMessage->setResponse(1, "KASO");
+                    mailbox.send(pDataBaseMessage->getSource(), pDataBaseMessage);
+                }
+                else
+                {
+                    pDataBaseMessage->setResponse(-1);
+                    mailbox.send(pDataBaseMessage->getSource(), pDataBaseMessage);
+                }
+            }
+        }
+
+        delete pMessage;
+
+        /*
+        std::string loginTime = Time::getTime(); 
+
+        if(checkPasswordFunction(db, message.content) == true)
+        {
+            mailbox.send(router, "TRUE", "DB_STMT_REP");
+            updateLastSeenField(db, message.content, loginTime);
+        }
+        else
+        {
+            mailbox.send(router, "FALSE", "DB_STMT_REP");
+        }
+        */
+    }
+
+    return 0;
+}

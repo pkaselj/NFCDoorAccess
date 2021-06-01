@@ -1,0 +1,455 @@
+
+#include "SimplifiedMailbox.hpp"
+
+#include"Time.hpp"
+#include"MailboxAutomaton.hpp"
+
+#include<cstring>
+
+#include<iostream>
+
+#define TRACE(X) std::cout<<"Marker:"<<X<<std::endl;
+
+SimplifiedMailbox::SimplifiedMailbox (const std::string& identifier, ILogger* p_logger, const struct mq_attr& _mailboxAttributes)
+    :   MailboxReference(identifier, p_logger, _mailboxAttributes), m_messageBuffer(SimpleMailboxMessage{})
+{
+    m_pAutomaton = new MailboxAutomaton(0, this, p_parentLogger);
+    if(m_pAutomaton->initialize() == false)
+    {
+        Kernel::Fatal_Error(name + ", m_siInstID: " + std::to_string(0) +" - Automaton cannot be initialized! Check the log files!");
+    }
+
+    setRTO_s(2);
+
+    struct mq_attr oldAttributes = getMQAttributes();
+    oldAttributes.mq_msgsize = MESSAGE_BUFFER_SIZE;
+    setMQAttributes(oldAttributes);
+
+    clearAllMessages();
+}
+
+SimplifiedMailbox::~SimplifiedMailbox()
+{
+    *p_parentLogger << "Closing Mailbox " + name + "!";
+
+    mq_close(fd);
+
+    *p_parentLogger << "Mailbox " + name + " closed!"; 
+
+    delete m_pAutomaton;
+}
+
+
+void SimplifiedMailbox::clearAllMessages()
+{
+    mq_attr previous_attributes = getMQAttributes();
+
+    mq_attr new_attributes = previous_attributes;
+    new_attributes.mq_flags |= O_NONBLOCK;
+
+    setMQAttributes(new_attributes);
+
+    int n = previous_attributes.mq_maxmsg;
+    ssize_t sizeOfReceivedData = -1;
+    char* p_message = new char[getMQAttributes().mq_msgsize + 1];
+
+    do
+    {
+        sizeOfReceivedData = mq_timedreceive(fd, p_message, getMQAttributes().mq_msgsize, 0, &timeout_settings);
+        *p_parentLogger << name + " - clearing messages..."; 
+        --n;
+    }
+    while(sizeOfReceivedData > 0 && n > 0);
+
+    delete[] p_message;
+
+    *p_parentLogger << name + " - messages cleared";
+
+    setMQAttributes(previous_attributes);
+}
+
+
+
+/*std::unique_ptr<SerializedMessage> SimplifiedMailbox::serializeMessage(const SimpleMailboxMessage& message)
+{
+
+    std::unique_ptr<SerializedMessage> serializedMessage = std::make_unique<SerializedMessage>();
+
+
+    bool copyError = false;
+
+    char* result = strncpy(serializedMessage->destination,
+                   message.destination.getName().c_str(),
+                   MAX_MESSAGE_LENGTH);
+
+    serializedMessage->destination[MAX_MESSAGE_LENGTH] = '\0';
+    copyError |= (result == nullptr);
+
+
+  result = strncpy(serializedMessage->source,
+                   message.source.getName().c_str(),
+                   MAX_MESSAGE_LENGTH);
+
+    serializedMessage->source[MAX_MESSAGE_LENGTH] = '\0';
+    copyError |= (result == nullptr);
+
+
+   
+  result = strncpy(serializedMessage->type,
+                   message.type.c_str(),
+                   MAX_MESSAGE_LENGTH);
+
+    serializedMessage->type[MAX_MESSAGE_LENGTH] = '\0';
+    copyError |= (result == nullptr);
+
+
+  result = strncpy(serializedMessage->content,
+                   message.content.c_str(),
+                   MAX_MESSAGE_LENGTH);
+
+    serializedMessage->content[MAX_MESSAGE_LENGTH] = '\0';
+    copyError |= (result == nullptr);
+
+
+
+    if(copyError == true)
+    {
+        *p_parentLogger << name + "- Error while preparing the message for serialization";
+        Kernel::Fatal_Error(name + "- Error while preparing the message for serialization");
+        exit(-1);
+    }
+
+    *p_parentLogger << name + " - Message successfully prepared for serialization";
+
+    return std::move( serializedMessage );
+}*/
+
+OWNER SimpleMailboxMessage* deserializeMessage(void* p_rawMessage);
+{
+    SimpleMailboxMessageHeader message_header; // Final deserialized message
+    
+    memcpy(reinterpret_cast<void*>(&message_header), p_rawMessage, sizeof(SimpleMailboxMessageHeader));
+    message_header.p_data = reinterpret_cast<void*>( reinterpret_cast<char*>(p_rawMessage) + sizeof(SimpleMailboxMessageHeader) );
+
+    return message_header;
+}
+
+bool SimplifiedMailbox::messageIsValid(const std::string& message)
+{
+    return true;
+}
+
+bool SimplifiedMailbox::receivedMessageIsValid(const std::string& message, int& delimiter)
+{
+    return true;
+}
+
+struct timespec SimplifiedMailbox::setRTO_s(time_t RTOs)
+{
+    struct timespec old_timeout_settings = timeout_settings;
+
+    if(RTOs <= 0)
+        Kernel::Fatal_Error(name + " - Timeout cannot be negative!");
+
+    timeout_settings = Time::getRawTime();
+
+    timeout_settings.tv_nsec = 0;
+    timeout_settings.tv_sec += RTOs;
+
+    return old_timeout_settings;
+}
+
+struct timespec SimplifiedMailbox::setRTO_ns(long RTOns)
+{
+    struct timespec old_timeout_settings = timeout_settings;
+
+    if(RTOns <= 0)
+        Kernel::Fatal_Error(name + " - Timeout cannot be negative!");
+
+    timeout_settings = Time::getRawTime();
+
+    timeout_settings.tv_nsec += RTOns;
+    timeout_settings.tv_sec = 0;
+
+    return old_timeout_settings;
+}
+
+void SimplifiedMailbox::setTimeout_settings(struct timespec _timeout_settings)
+{
+    if(_timeout_settings.tv_sec <= 0 != _timeout_settings.tv_nsec <= 0) // LOGICAL XOR
+        timeout_settings = _timeout_settings;
+    else
+        Kernel::Fatal_Error(name + " - Timeout settings not valid. Mutually exclusive timespec fields are specified at the same time!");
+}
+
+struct timespec SimplifiedMailbox::getTimeout_settings()
+{
+    return timeout_settings;
+}
+
+mq_attr SimplifiedMailbox::getMQAttributes()
+{
+    mq_attr message_queue_attributes {
+        .mq_flags = -1,
+        .mq_maxmsg = -1,
+        .mq_msgsize = -1,
+        .mq_curmsgs = -1 
+    };
+
+    int status = mq_getattr(fd, &message_queue_attributes);
+    if(status < 0)
+    {
+        Kernel::Warning("Cannot get mailbox attributes. MB: " + name);
+    }
+
+    return message_queue_attributes;
+}
+
+void SimplifiedMailbox::setMQAttributes(const mq_attr& message_queue_attributes)
+{
+    int status = -1;
+
+    const struct mq_attr old_attributes = getMQAttributes();
+    if(message_queue_attributes.mq_msgsize != old_attributes.mq_msgsize ||
+       message_queue_attributes.mq_maxmsg  != old_attributes.mq_maxmsg) // Needs to be reset to change these parameters
+    {
+        mq_unlink(("/" + name).c_str());
+        status = fd = mq_open(
+                              ("/" + name).c_str(),
+                              Kernel::IOMode::RW,
+                              Kernel::Permission::OWNER_RW,
+                              &message_queue_attributes
+                             );
+    }
+    else
+    {
+        status = mq_setattr(fd, &message_queue_attributes, nullptr);
+    }
+    
+    if(status < 0)
+    {
+        Kernel::Warning("Cannot set mailbox attributes. MB: " + name);
+    }
+
+}
+
+OWNER SimpleMailboxMessage* SimplifiedMailbox::receiveImmediate(enuReceiveOptions timed)
+{
+    void* p_rawData = reinterpret_cast<void*>(new char[getMQAttributes().mq_msgsize + 1]);
+    SimpleMailboxMessageHeader message_header;
+
+    if(timed == enuReceiveOptions::TIMED)
+    {
+
+        [[maybe_unused]]
+        ssize_t sizeOfreceivedData = mq_timedreceive(fd,
+                                                     reinterpret_cast<char*> (p_rawData),
+                                                     getMQAttributes().mq_msgsize,
+                                                     0,
+                                                     &timeout_settings);
+
+        int _errno = errno;
+        if(sizeOfreceivedData <= 0)
+        {
+            Kernel::Warning("MB: " + name + " receive error. Size of received data: " + std::to_string(sizeOfreceivedData) + " - errno: " + std::to_string(_errno));
+        }
+
+        _errno = errno;
+        if(_errno == ETIMEDOUT)
+        {
+            *p_parentLogger << name + " receive timed out - No response!";
+            SimpleMailboxMessageHeader timed_out_message;
+            timed_out_message.type = enuMessageType::TIMED_OUT;
+            return timed_out_message;
+        }
+
+    }
+    else if(timed == enuReceiveOptions::NORMAL)
+    {
+
+        [[maybe_unused]]
+        ssize_t sizeOfreceivedData = mq_timedreceive(fd,
+                                                     reinterpret_cast<char*> (p_rawData),
+                                                     getMQAttributes().mq_msgsize,
+                                                     0,
+                                                     nullptr);
+
+        int _errno = errno;
+        if(sizeOfreceivedData <= 0)
+        {
+            Kernel::Warning("MB: " + name + " receive error. Size of received data: " + std::to_string(sizeOfreceivedData) + " - errno: " + std::to_string(_errno));
+        }
+
+    }
+
+    SimpleMailboxMessageHeader deserializedMessage;
+    deserializedMessage = deserializeMessage(p_rawData);
+
+
+    *p_parentLogger << name + " - Message successfully received: \n\t\t"
+                        + "  source: " + std::to_string(deserializedMessage.source) + "\n\t\t"
+                        + ", destination: " + std::to_string(deserializedMessage.destination) + "\n\t\t"
+                        + ", type: " + std::to_string(deserializedMessage.type) + "\n\t\t"
+                        + ", length: " + std::to_string(deserializedMessage.length);
+
+    return deserializedMessage;
+}
+
+void SimplifiedMailbox::sendImmediate(const MailboxReference& destination, const enuMessageType type)
+{
+    sendImmediate(destination.getFileDescriptor(), type);
+}
+
+void SimplifiedMailbox::sendImmediate(const mqd_t destination, const enuMessageType type)
+{
+    SimpleMailboxMessageHeader message_header;
+
+    message_header.source = this->getFileDescriptor();
+    message_header.destination = destination;
+    message_header.type = type;
+    message_header.p_data = nullptr;
+
+    sendImmediate(message_header);
+}
+
+void SimplifiedMailbox::sendImmediate(const SimpleMailboxMessageHeader& message)
+{
+
+    size_t serializedMessageLength = sizeof(SimpleMailboxMessageHeader) + message.length;
+    char* serializedMessage = new char[serializedMessageLength + 1]; // TODO member variable - reduces # of allocations
+    memset(serializedMessage, 0, serializedMessageLength + 1);
+
+    memcpy(reinterpret_cast<void*>(serializedMessage), reinterpret_cast<const void*>(&message), sizeof(SimpleMailboxMessageHeader));
+
+    memcpy(reinterpret_cast<void*>(serializedMessage + sizeof(SimpleMailboxMessageHeader) ), reinterpret_cast<void*>(message.p_data), message.length);
+
+    int result = mq_send(message.destination,
+                         serializedMessage,
+                         serializedMessageLength,
+                         0);
+
+    delete[] serializedMessage;
+
+    int _errno = errno; 
+    if(result < 0)
+    {
+       *p_parentLogger << name + " Could not send the message. Errno code: " + std::to_string(_errno);
+       Kernel::Fatal_Error("Error while trying to send the message. Check: " + p_parentLogger->getName());
+        return;
+    }
+
+    *p_parentLogger << name + " - Message successfully sent: \n\t\t"
+                        + "  source: " + std::to_string(message.source) + "\n\t\t"
+                        + ", destination: " + std::to_string(message.destination) + "\n\t\t"
+                        + ", type: " + std::to_string(message.type) + "\n\t\t"
+                        + ", length: " + std::to_string(message.length);
+
+
+    return;
+}
+
+
+OWNER MailboxAutomatonEvent_wMessage* SimplifiedMailbox::parseMessage(SimpleMailboxMessageHeader& message)
+{
+    if(message.type == TIMED_OUT)
+    {
+        // TIMED_OUT callback ---- watchdog TODO
+    }
+
+    else if(message.type == RTS && message.source != m_messageBuffer.destination)
+    {
+       return new MailboxAutomatonEvent_wMessage(MailboxAutomaton::enuEvtRTS_Received, &message);
+    }
+    else if(message.type == CTS && message.source == m_messageBuffer.destination)
+    {
+        return new MailboxAutomatonEvent_wMessage(MailboxAutomaton::enuEvtCTS_Received, &message);
+    }
+    else if(message.type == HOLD && message.source == m_messageBuffer.destination)
+    {
+        return new MailboxAutomatonEvent_wMessage(MailboxAutomaton::enuEvtHoldReceived, &message);
+    }
+    else if(message.type == ACK && message.source == m_messageBuffer.destination)
+    {
+        return new MailboxAutomatonEvent_wMessage(MailboxAutomaton::enuEvtACK_Received, &message);
+    }
+    /*else
+    {
+        *p_parentLogger << name + " INVALID CTL SIGNAL RECEIVED: " + std::to_string(message.type) + ", FROM: " + std::to_string(message.source); 
+        Kernel::Fatal_Error(name + " - invalid CTL message received");
+        return nullptr; // ERROR TODO ERROR STATE?
+    }*/
+
+    else if(message.source == m_messageBuffer.destination)
+    {
+        return new MailboxAutomatonEvent_wMessage(MailboxAutomaton::enuEvtValidMsg, &message);
+    }
+
+
+    // else
+    *p_parentLogger << name + " INVALID MESSAGE RECEIVED FROM: " + std::to_string(message.source) + ", TYPE: " + std::to_string(message.type); 
+    Kernel::Fatal_Error(name + " - invalid CTL message received");
+    return nullptr; // ERROR TODO ERROR STATE?
+
+}
+
+void SimplifiedMailbox::send(const MailboxReference& destination, void* p_data, size_t data_size)
+{
+
+    SimpleMailboxMessageHeader messageToBeSent;
+    messageToBeSent.source = this->getFileDescriptor();
+    messageToBeSent.destination = destination.getFileDescriptor();
+    messageToBeSent.type = MESSAGE;
+    messageToBeSent.length = data_size;
+    messageToBeSent.p_data = p_data;
+
+    m_messageBuffer = messageToBeSent; // ????
+    
+
+    MailboxAutomatonEvent_wMessage* p_event = new MailboxAutomatonEvent_wMessage(MailboxAutomaton::enuEvtInitSending, &messageToBeSent);
+    m_pAutomaton->processEvent(p_event);
+
+    while(m_pAutomaton->taskCompleted() == false)
+    {
+        SimpleMailboxMessageHeader msg = receiveImmediate(); // TODO timed
+        p_event = parseMessage(msg);
+        m_pAutomaton->processEvent(p_event);
+    }
+
+    if(m_qWaitingList.empty() == true)
+        m_pAutomaton->processEvent(new MailboxAutomatonEvent_wMessage(MailboxAutomaton::enuEvtResetQueueEmpty));
+    else
+        m_pAutomaton->processEvent(new MailboxAutomatonEvent_wMessage(MailboxAutomaton::enuEvtResetQueueNotEmpty));
+
+}
+
+SimpleMailboxMessageHeader SimplifiedMailbox::receive()
+{
+
+    MailboxAutomatonEvent_wMessage* p_event = nullptr;
+    SimpleMailboxMessageHeader msg;
+
+    msg.source = 0;
+    msg.destination = 0;
+    msg.type = EMPTY;
+    msg.length = 0;
+    msg.p_data = nullptr;
+
+    p_event = new MailboxAutomatonEvent_wMessage(MailboxAutomaton::enuEvtStartReceiving);
+    m_pAutomaton->processEvent(p_event);
+
+    while(m_pAutomaton->taskCompleted() == false)
+    {
+        msg = receiveImmediate();
+        p_event = parseMessage(msg);
+        m_pAutomaton->processEvent(p_event);
+    }
+
+    msg = m_messageBuffer;
+
+    if(m_qWaitingList.empty() == true)
+        m_pAutomaton->processEvent(new MailboxAutomatonEvent_wMessage(MailboxAutomaton::enuEvtResetQueueEmpty));
+    else
+        m_pAutomaton->processEvent(new MailboxAutomatonEvent_wMessage(MailboxAutomaton::enuEvtResetQueueNotEmpty));
+
+    return msg;
+}

@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Settings name="NFCDoorAccess">
+	<General>
+		<MaxLogFileSize_MB>10</MaxLogFileSize_MB>
+		<LogFileOldSuffix>.old</LogFileOldSuffix>
+		<MailboxRefenreceDefaultName>NO_DESTINATION</MailboxRefenreceDefaultName>
+		<RequestDeadlineTimerTimeout_s>60</RequestDeadlineTimerTimeout_s>
+	</General>
+	<Clearance>
+		<Max>255</Max>
+		<NoPrivileges>-1</NoPrivileges>
+		<!-- Fail safe clearance -->
+		<Default>-255</Default>
+	</Clearance>
+	<Keypad>
+		<BufferSize>10</BufferSize>
+		<PipeName>keypadFIFO</PipeName>
+		<IstreamPath>/dev/input/event0</IstreamPath>
+		<ReadTimeout_ms>10</ReadTimeout_ms>
+	</Keypad>
+	<RFID_Reader>
+		<BufferSize>12</BufferSize>
+		<ReadTimeout_ms>10</ReadTimeout_ms>
+		<SameCardTimeout_ms>2000</SameCardTimeout_ms>
+	</RFID_Reader>
+	<Mailbox queue_size="10" msg_size="200" default_timeout_ms="1000">
+		<MainAppMailbox>
+			<Name>main.mb</Name>
+		</MainAppMailbox>
+		<DatabaseGatewayMailbox>
+			<Name>database_gateway.mb</Name>
+			<Timeout_ms>1000</Timeout_ms>
+		</DatabaseGatewayMailbox>
+		<HardwaredMailbox>
+			<Name>hardwared.mb</Name>
+		</HardwaredMailbox>
+	</Mailbox>
+	<Watchdog>
+		<Server>
+			<Name>server.watchdog</Name>
+			<Period_ms>1000</Period_ms>
+		</Server>
+		<Hardwared>
+			<Name>hardwared.watchdog</Name>
+			<Timeout_ms>2000</Timeout_ms>
+			<TTL>15</TTL>
+		</Hardwared>
+		<Main>
+			<Name>main.watchdog</Name>
+			<Timeout_ms>10000</Timeout_ms>
+			<TTL>5</TTL>
+		</Main>
+		<Database>
+			<Name>database.watchdog</Name>
+			<Timeout_ms>10000</Timeout_ms>
+			<TTL>5</TTL>
+		</Database>
+	</Watchdog>
+	<Startup>
+		<Hardwared>
+			<Path>HardwareDaemon.ln</Path>
+		</Hardwared>
+		<MainApp>
+			<Path>MainApplication.ln</Path>
+		</MainApp>
+		<DatabaseGateway>
+			<Path>DatabaseGateway.ln</Path>
+		</DatabaseGateway>
+	</Startup>
+	<Kernel>
+		<LogName>kernel.log</LogName>
+	</Kernel>
+	<Database>
+		<Path>/home/pi/NFCDoorAccess_src/DatabaseGateway/res/Database_11032021.db</Path>
+		<LogThread>
+			<MailboxName>database.mailbox.log_thread</MailboxName>
+		</LogThread>
+		<Tables>
+			<EmployeesTable name="Employees">
+				<ID_ColumnName>EmployeeId</ID_ColumnName>
+				<Name_ColumnName>Name</Name_ColumnName>
+				<Clearance_ColumnName>Clearance</Clearance_ColumnName>
+			</EmployeesTable>
+			<KeypadPassTable name="KeypadPasswordTable">
+				<ID_ColumnName>ID</ID_ColumnName>
+				<Password_ColumnName>PasswordHash</Password_ColumnName>
+				<Owner_ColumnName>PassOwnerId</Owner_ColumnName>
+			</KeypadPassTable>
+			<CommandsTable name="Commands">
+				<ID_ColumnName>ID</ID_ColumnName>
+				<Command_ColumnName>CommandName</Command_ColumnName>
+				<Clearance_ColumnName>CommandClearance</Clearance_ColumnName>
+			</CommandsTable>
+			<RFID_CardTable name="RFIDCardTable">
+				<ID_ColumnName>ID</ID_ColumnName>
+				<CardUUID_ColumnName>CardUUID</CardUUID_ColumnName>
+				<Owner_ColumnName>CardOwnerId</Owner_ColumnName>
+			</RFID_CardTable>
+			<LogTable name="LogTable">
+				<ID_ColumnName>Id</ID_ColumnName>
+				<Timestamp_ColumnName>Timestamp</Timestamp_ColumnName>
+				<UserID_ColumnName>UserId</UserID_ColumnName>
+				<AuthMethod_ColumnName>AuthMethod</AuthMethod_ColumnName>
+				<CommandID_ColumnName>CommandId</CommandID_ColumnName>
+			</LogTable>
+		</Tables>
+	</Database>
+	<Indicators>
+		<Mailbox>
+			<Name>indicators.mb</Name>
+			<ServerSuffix>.s</ServerSuffix>
+			<ClientSuffix>.c</ClientSuffix>
+			<Timeout_ms>50</Timeout_ms>
+		</Mailbox>
+		<Buzzer>
+			<!-- BCM PIN -->
+			<Pin>20</Pin>
+			<PingDuration_ms>10</PingDuration_ms>
+		</Buzzer>
+		<Door>
+			<Pin>21</Pin>
+			<OpenTime_ms>3000</OpenTime_ms>
+		</Door>
+		<LCD>
+			<I2C>
+				<Bus>1</Bus>
+
+				<!-- 0x27 == 39 -->
+				<Address>39</Address>
+			</I2C>
+			<IdleMessage>EMOVIS</IdleMessage>
+			<MessageLingerTime_ms>1500</MessageLingerTime_ms>
+			<InterCommandWaitTime_us>500</InterCommandWaitTime_us>
+		</LCD>
+	</Indicators>
+</Settings>

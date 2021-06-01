@@ -1,0 +1,124 @@
+#include<unistd.h>
+#include<cstdio>
+#include<cstdlib>
+#include<linux/input.h>
+#include<linux/input-event-codes.h>
+#include<cstring>
+#include<string>
+#include<errno.h>
+#include<signal.h>
+
+#include"Settings.hpp"
+#include"pipe.hpp"
+#include"DataMailbox.hpp"
+#include"errorCodes.h"
+#include"WatchdogClient.hpp"
+#include"Time.hpp"
+
+
+volatile sig_atomic_t globalTerminateFlag = 0;
+
+void routeMessage(BasicDataMailboxMessage& message);
+
+void cardHandler(RFIDMessage& cardData);
+
+void KeypadPasswordHandler(KeypadMessage_wPassword& message);
+void enuCommandHandler(CommandMessage& message);
+
+
+int main(void)
+{
+    
+    Logger logger("router.log");
+    Logger state_logger_router("router_state.log");
+    Logger state_logger_routerToDBG("routerToDBG_state.log");
+
+    //MailboxAut router(ROUTER_MESSAGE_QUEUE, &logger, &state_logger_router);
+    //MailboxAut routerToDBG(ROUTER_TO_DBG_QUEUE, &logger, &state_logger_routerToDBG);
+
+    DataMailbox router(ROUTER_MESSAGE_QUEUE, &state_logger_router);
+    DataMailbox routerToDBG(ROUTER_TO_DBG_QUEUE, &state_logger_routerToDBG);
+
+    MailboxReference databaseGateway(DATABASE_GATEWAY_QUEUE);
+
+    Logger watchdogLogger(MAIN_APPLICATION_CLIENT_NAME + ".log");
+    WatchdogClient watchdog(MAIN_APPLICATION_CLIENT_NAME);
+
+    SlotSettings timeoutSettings;
+    timeoutSettings.m_timeout_ms = MAIN_APPLICATION_TIMEOUT_MS;
+    timeoutSettings.m_BaseTTL = MAIN_APPLICATION_BASE_TTL;
+
+    watchdog.Register(WATCHDOG_SERVER_NAME, timeoutSettings, enuActionOnFailure::RESET_ONLY);
+
+    sleep(1);
+
+    timespec routerMailboxTimeoutSettings = Time::getTimespecFrom_ms(MAIN_APPLICATION_TIMEOUT_MS);
+    router.setTimeout_settings(routerMailboxTimeoutSettings);
+
+    watchdog.Start();
+
+
+    while(watchdog.Kick())
+    {
+        logger << "Awaiting messages!";
+        BasicDataMailboxMessage message = router.receive(enuReceiveOptions::TIMED);
+        if (message.getDataType() == MessageDataType::TimedOut)
+        {
+            continue;
+        }
+
+        routeMessage(message);
+    }
+
+    globalTerminateFlag = 1;
+
+    logger << "Soft exit!";
+    
+}
+
+void routeMessage(BasicDataMailboxMessage& message)
+{
+    std::string sourceName = message.getSource().getName();
+
+    if (sourceName == "keypadMB" && message.getDataType() == MessageDataType::KeypadMessage_wPassword)
+    {
+        KeypadMessage_wPassword keypadMessage;
+        keypadMessage.Unpack(message);
+        KeypadPasswordHandler(keypadMessage);
+    }
+    else if (sourceName == "keypadMB" && message.getDataType() == MessageDataType::CommandMessage)
+    {
+        CommandMessage keypadMessage;
+        keypadMessage.Unpack(message);
+
+        std::cout << "Command unpacked: " << keypadMessage.getInfo() << std::endl;
+
+        enuCommandHandler(keypadMessage);
+    }
+    else if (sourceName == "RFIDReaderLogic")
+    {
+        RFIDMessage cardData;
+        cardData.Unpack(message);
+        cardHandler(cardData);
+    }
+    else
+    {
+        Kernel::Warning(ROUTER_MODULE_PATH + " - Unknown source name (" + sourceName + ") or message datatype (" + std::to_string((int)message.getDataType()) + ")");
+    }
+        
+}
+
+void cardHandler(RFIDMessage& cardData)
+{
+    std::cout << "Card detected UUID: " << cardData.getUUID() << std::endl;
+}
+
+void KeypadPasswordHandler(KeypadMessage_wPassword& message)
+{
+    std::cout << "Keypad password detected - Password: " << message.getPassword() << std::endl;
+}
+
+void enuCommandHandler(CommandMessage& message)
+{
+    std::cout << "Keypad command detected - Command: " << message.getCommandId() << std::endl;
+}
