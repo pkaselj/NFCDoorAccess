@@ -3,7 +3,7 @@ NFCDoorAccess built with CMake
 
 Work in progress!
 
-Author: Petar Kaselj
+Author: Petar Kaselj <br>
 Contact info:
   <ul>
     <li>petar.kaselj.00@gmail.com</li>
